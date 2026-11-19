@@ -10,49 +10,56 @@ This document outlines the architectural blueprint, data flows, and engineering 
 
 ```mermaid
 flowchart TD
-    User(["Client Browser / Mobile User"]) -->|HTTP / JSON with X-Session-ID| UI["Luxury Web Interface (HTML5 / CSS / Vanilla JS)"]
+    User["Client Browser or Mobile Device"] -->|HTTP Request with X-Session-ID| UI["Luxury Web Interface - HTML5 and CSS"]
     UI -->|POST /api/chat| Gateway["FastAPI Application Gateway"]
 
-    subgraph SecurityLayer ["Security & Safety Layer"]
+    subgraph SecurityLayer ["Security and Safety Layer"]
         Gateway --> G1["Injection Defense Engine"]
-        G1 -->|Adversarial Pattern Detected| Block["403 Security Intercept"]
+        G1 -->|Attack Detected| Block["403 Security Intercept"]
         G1 -->|Passed| G2["Domain Relevance Bounding"]
-        G2 -->|Off-Topic Query| Deflect["Polite Domain Deflection"]
-        G2 -->|Passed| G3["PII Masking & Sanitization"]
+        G2 -->|Off Topic| Deflect["Polite Domain Deflection"]
+        G2 -->|Passed| G3["PII Masking and Sanitization"]
     end
 
     subgraph TenantIsolationLayer ["Multi-Tenant Isolation Layer"]
         G3 --> TSession["MultiTenantSessionManager"]
-        TSession -->|Retrieve / Create| TContext["TenantContext (Scoped by session_id)"]
+        TSession -->|Lookup or Create| TContext["TenantContext Scoped by session_id"]
         TContext -->|Isolated History| Hist["Tenant Conversation Memory"]
         TContext -->|Isolated Chunks| PrivChunks["Tenant Private Preference Chunks"]
     end
 
     subgraph RetrievalLayer ["Hybrid Filtered RAG Engine"]
-        G3 --> QueryParse["Constraint Parser (City, Budget, Bedrooms, Platform)"]
-        QueryParse --> ParamFilter["Parametric SQL/Metadata Hard Filter"]
+        G3 --> QueryParse["Constraint Parser - City, Budget, Bedrooms, Platform"]
+        QueryParse --> ParamFilter["Parametric Hard Filter"]
         ParamFilter --> BM25["BM25 Lexical Keyword Scorer"]
         ParamFilter --> Semantic["Dense Semantic Token Scorer"]
-        BM25 & Semantic --> RankFusion["Score Fusion & Ranking (Top-3)"]
+        BM25 --> RankFusion["Score Fusion and Ranking - Top 3"]
+        Semantic --> RankFusion
         PrivChunks -->|Inject Scoped Chunks Only| RankFusion
-        Corpus[("Unified Knowledge Store: 278 Properties")] --> ParamFilter
+        Corpus[("Unified Knowledge Store - 278 Properties")] --> ParamFilter
     end
 
-    subgraph GenerationLayer ["LLM & Caching Subsystem ($0 Total Cost)"]
-        RankFusion --> CacheCheck{"Semantic LRU Cache Hit? (Jaccard >= 0.70)"}
-        CacheCheck -->|Hit (< 0.01 ms)| CachedResp["Serve Cached Answer (0 Tokens)"]
-        CacheCheck -->|Miss| WaterfallRouter["OpenRouter Waterfall Fallback Router"]
+    subgraph GenerationLayer ["LLM and Caching Subsystem - Zero Cost"]
+        RankFusion --> CacheCheck{"Semantic LRU Cache Hit"}
+        CacheCheck -->|Cache Hit| CachedResp["Serve Cached Answer in 0.004 ms"]
+        CacheCheck -->|Cache Miss| WaterfallRouter["OpenRouter Waterfall Fallback Router"]
         
         WaterfallRouter --> M1["google/gemini-2.0-flash:free"]
-        M1 -->|If 429 / Rate Limit| M2["meta-llama/llama-3.3-70b-instruct:free"]
-        M2 -->|If 429 / Rate Limit| M3["qwen/qwen-2.5-72b-instruct:free"]
-        M3 -->|If 429 / Rate Limit| M4["mistralai/mistral-small-24b:free"]
+        M1 -->|If Rate Limited| M2["meta-llama/llama-3.3-70b-instruct:free"]
+        M2 -->|If Rate Limited| M3["qwen/qwen-2.5-72b-instruct:free"]
+        M3 -->|If Rate Limited| M4["mistralai/mistral-small-24b:free"]
         M4 -->|If All Exhausted| OfflineEng["Local Structured Fallback Engine"]
     end
 
-    CachedResp & M1 & M2 & M3 & M4 & OfflineEng --> GroundingCheck["Grounding & Entity Validation"]
+    CachedResp --> GroundingCheck["Grounding and Entity Validation"]
+    M1 --> GroundingCheck
+    M2 --> GroundingCheck
+    M3 --> GroundingCheck
+    M4 --> GroundingCheck
+    OfflineEng --> GroundingCheck
+
     GroundingCheck --> TStore["Append to Tenant History"]
-    GroundingCheck --> JSONResponse["FastAPI Response (Reply + Property Cards + Latency)"]
+    GroundingCheck --> JSONResponse["FastAPI Response - Reply and Property Cards"]
     JSONResponse --> UI
 ```
 
@@ -63,17 +70,17 @@ flowchart TD
 ```mermaid
 flowchart LR
     subgraph DataSources ["External Data Extraction"]
-        W1["Wasalt Marketplace (wasalt.sa)"] -->|Next.js __NEXT_DATA__ Hydration Payload| WParser["Wasalt JSON Listing Parser"]
-        D1["DarGlobal Official Portfolio (darglobal.co.uk)"] -->|Catalog & Brand Partnership Records| DParser["DarGlobal Luxury Parser"]
+        W1["Wasalt Marketplace - wasalt.sa"] -->|Next.js Hydration Payload| WParser["Wasalt JSON Listing Parser"]
+        D1["DarGlobal Official Portfolio"] -->|Catalog and Brand Partnerships| DParser["DarGlobal Luxury Parser"]
     end
 
     subgraph NormalizationPipeline ["Schema Normalization"]
-        WParser --> Transform["Attribute Mapper (City, SAR Price, Beds, Amenities, CDN Images)"]
+        WParser --> Transform["Attribute Mapper - City, SAR Price, Beds, Images"]
         DParser --> Transform
-        Transform --> Dedupe["ID Deduplication & Sanitization"]
+        Transform --> Dedupe["ID Deduplication and Sanitization"]
     end
 
-    Dedupe --> Store[("data/properties.json (278 Verified Records)")]
+    Dedupe --> Store[("data/properties.json - 278 Verified Records")]
     Store --> IndexInit["Search Engine Corpus Initialization"]
 ```
 
@@ -100,33 +107,33 @@ Real estate advisory involves high-stakes confidential information (investor bud
 ```mermaid
 sequenceDiagram
     autonumber
-    actor TenantA as Client A (Session ID: uuid-aaa)
-    actor TenantB as Client B (Session ID: uuid-bbb)
+    actor TenantA as Client A - Session uuid-aaa
+    actor TenantB as Client B - Session uuid-bbb
     participant Gateway as FastAPI Router
     participant SessionMgr as MultiTenantSessionManager
     participant TenantMem as Memory Partition Store
     participant HybridSearch as Hybrid Search Engine
 
-    TenantA->>Gateway: POST /api/tenant/chunk (Text: "Max budget 4M SAR in Sedra")
-    Gateway->>SessionMgr: get_session("uuid-aaa")
-    SessionMgr->>TenantMem: Store chunk in TenantContext("uuid-aaa")
+    TenantA->>Gateway: POST /api/tenant/chunk (Budget 4M SAR in Sedra)
+    Gateway->>SessionMgr: get_session(uuid-aaa)
+    SessionMgr->>TenantMem: Store chunk in TenantContext uuid-aaa
     Gateway-->>TenantA: 200 OK (Chunk stored)
 
-    TenantB->>Gateway: POST /api/chat ("Show me villas matching my budget")
-    Gateway->>SessionMgr: get_session("uuid-bbb")
-    SessionMgr->>TenantMem: Fetch chunks for "uuid-bbb"
+    TenantB->>Gateway: POST /api/chat (Show me villas matching my budget)
+    Gateway->>SessionMgr: get_session(uuid-bbb)
+    SessionMgr->>TenantMem: Fetch chunks for uuid-bbb
     TenantMem-->>SessionMgr: Return Empty (No chunks for Tenant B)
-    Gateway->>HybridSearch: search(query, tenant_chunks=[])
-    Note over HybridSearch: Tenant A's 4M budget chunk is completely invisible to Tenant B
+    Gateway->>HybridSearch: search query with empty tenant chunks
+    Note over HybridSearch: Tenant A 4M budget chunk is completely invisible to Tenant B
     HybridSearch-->>Gateway: Return public catalog matches
     Gateway-->>TenantB: Response (Zero cross-tenant leakage)
 
-    TenantA->>Gateway: POST /api/chat ("What matches my saved criteria?")
-    Gateway->>SessionMgr: get_session("uuid-aaa")
-    SessionMgr->>TenantMem: Fetch chunks for "uuid-aaa"
-    TenantMem-->>SessionMgr: Return ["Max budget 4M SAR in Sedra"]
-    Gateway->>HybridSearch: search(query, tenant_chunks=["Max budget 4M SAR in Sedra"])
-    HybridSearch-->>Gateway: Return Sedra properties <= 4M SAR
+    TenantA->>Gateway: POST /api/chat (What matches my saved criteria)
+    Gateway->>SessionMgr: get_session(uuid-aaa)
+    SessionMgr->>TenantMem: Fetch chunks for uuid-aaa
+    TenantMem-->>SessionMgr: Return Budget 4M SAR in Sedra
+    Gateway->>HybridSearch: search query with Tenant A chunks
+    HybridSearch-->>Gateway: Return Sedra properties under 4M SAR
     Gateway-->>TenantA: Personalized Response (Isolated to Client A)
 ```
 
@@ -146,19 +153,21 @@ When a user asks: `"Find 3-bedroom villas in Riyadh under 2,000,000 SAR"`:
 
 ```mermaid
 flowchart TD
-    UserQuery["User Query: '3-bed villa in Riyadh under 2,000,000 SAR'"] --> IntentExtract["Parametric Filter Extractor"]
+    UserQuery["User Query: 3-bed villa in Riyadh under 2M SAR"] --> IntentExtract["Parametric Filter Extractor"]
     
-    IntentExtract --> ExactCriteria["city: 'Riyadh'<br>max_price: 2,000,000<br>bedrooms: 3<br>listing_type: 'sale'"]
-    IntentExtract --> SemanticQuery["'luxury family villa modern finishes'"]
+    IntentExtract --> ExactCriteria["city: Riyadh, max_price: 2000000, bedrooms: 3"]
+    IntentExtract --> SemanticQuery["luxury family villa modern finishes"]
 
-    ExactCriteria --> PreFilter["Hard Parametric Pre-Filter (Discard out-of-scope records)"]
-    PreFilter --> FilteredSubset["Filtered Candidates (100% Budget & City Compliant)"]
+    ExactCriteria --> PreFilter["Hard Parametric Pre-Filter"]
+    PreFilter --> FilteredSubset["Filtered Candidates - 100% Budget and City Compliant"]
 
     SemanticQuery --> BM25["BM25 Lexical Keyword Matcher"]
     SemanticQuery --> Dense["Dense Token Relevance Scorer"]
 
-    FilteredSubset --> BM25 & Dense
-    BM25 & Dense --> Ranker["Reciprocal Rank Fusion (Top-3 Ranked)"]
+    FilteredSubset --> BM25
+    FilteredSubset --> Dense
+    BM25 --> Ranker["Reciprocal Rank Fusion - Top 3"]
+    Dense --> Ranker
     Ranker --> LLMContext["Augmented Prompt with Grounded Specifications"]
 ```
 
@@ -166,31 +175,30 @@ flowchart TD
 
 ## 6. Zero-Cost OpenRouter Fallback & Semantic LRU Cache
 
-To ensure $0 operational cost and eliminate single-point-of-failure risks (such as 429 rate limits or upstream provider outages), the system uses a dual-layer resiliency mechanism:
+To ensure zero operational cost and eliminate single-point-of-failure risks (such as 429 rate limits or upstream provider outages), the system uses a dual-layer resiliency mechanism:
 
 ```mermaid
-stateDiagram-v2
-    [*] --> InboundQuery
-    InboundQuery --> SemanticCacheCheck: Compute Jaccard Overlap
+flowchart TD
+    Start(["Inbound Query"]) --> CacheCheck{"Semantic LRU Cache Check"}
+    CacheCheck -->|Cache Hit| RamServe["Serve from RAM in 0.004 ms - Zero Tokens"]
     
-    SemanticCacheCheck --> CacheHit: Overlap >= 0.70
-    CacheHit --> OutputResponse: Serve from RAM in 0.004 ms ($0 Tokens)
-
-    SemanticCacheCheck --> OpenRouterWaterfall: Cache Miss
-    OpenRouterWaterfall --> Model1: Try google/gemini-2.0-flash-exp:free
-    Model1 --> Success: HTTP 200
-    Model1 --> Model2: HTTP 429 / Error (Try meta-llama/llama-3.3-70b-instruct:free)
-    Model2 --> Success: HTTP 200
-    Model2 --> Model3: HTTP 429 / Error (Try qwen/qwen-2.5-72b-instruct:free)
-    Model3 --> Success: HTTP 200
-    Model3 --> OfflineEngine: All Free Models Throttled
-
-    OfflineEngine --> DeterministicAdvisory: Synthesize Property Cards directly from DB in 0.02 ms
-    DeterministicAdvisory --> OutputResponse: 100% Zero-Downtime Guarantee
-
-    Success --> StoreInCache: Store Query & Response (LRU Eviction / 6h TTL)
-    StoreInCache --> OutputResponse
-    OutputResponse --> [*]
+    CacheCheck -->|Cache Miss| M1["Try Model 1: google/gemini-2.0-flash:free"]
+    M1 -->|Success 200| SaveCache["Store Query in Semantic LRU Cache"]
+    M1 -->|429 Rate Limit| M2["Try Model 2: meta-llama/llama-3.3-70b-instruct:free"]
+    
+    M2 -->|Success 200| SaveCache
+    M2 -->|429 Rate Limit| M3["Try Model 3: qwen/qwen-2.5-72b-instruct:free"]
+    
+    M3 -->|Success 200| SaveCache
+    M3 -->|429 Rate Limit| M4["Try Model 4: mistralai/mistral-small-24b:free"]
+    
+    M4 -->|Success 200| SaveCache
+    M4 -->|All Throttled| OfflineEng["Local Structured Fallback Engine - 0.02 ms"]
+    
+    OfflineEng --> DeliverResponse["Deliver Grounded Property Cards - Zero Downtime"]
+    SaveCache --> DeliverResponse
+    RamServe --> DeliverResponse
+    DeliverResponse --> End(["Response Sent to Client"])
 ```
 
 ---
@@ -201,16 +209,16 @@ The guardrails engine operates inline with every request before any retrieval or
 
 ```mermaid
 flowchart TD
-    RawInput["Incoming Raw User Message"] --> Sanitize["PII Sanitizer: Mask Credit Cards / Sensitive IDs"]
-    Sanitize --> InjectionCheck{"Prompt Injection Regex Check<br>(DAN, system prompt leak, ignore instructions)"}
+    RawInput["Incoming Raw User Message"] --> Sanitize["PII Sanitizer: Mask Credit Cards and Sensitive IDs"]
+    Sanitize --> InjectionCheck{"Prompt Injection Regex Check"}
     
-    InjectionCheck -->|Match Found| Block["403 Security Intercept<br>'Security Notice: Prompt injection attempt detected.'"]
+    InjectionCheck -->|Attack Detected| Block["403 Security Intercept - Block and Log"]
     
-    InjectionCheck -->|Clean| DomainCheck{"Domain Bounding Word-Boundary Regex<br>(Checks real estate, cities, brands, investments)"}
+    InjectionCheck -->|Clean| DomainCheck{"Domain Bounding Word-Boundary Regex"}
     
-    DomainCheck -->|Out of Domain| Deflect["Polite Domain Deflection<br>'I specialize exclusively in luxury and Saudi real estate advisory.'"]
+    DomainCheck -->|Out of Domain| Deflect["Polite Domain Deflection to Real Estate"]
     
-    DomainCheck -->|In Domain| PipelinePass["Pass to Multi-Tenant Session & Hybrid Retrieval"]
+    DomainCheck -->|In Domain| PipelinePass["Pass to Multi-Tenant Session and Hybrid Retrieval"]
 ```
 
 ---
