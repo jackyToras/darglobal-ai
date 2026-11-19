@@ -142,36 +142,6 @@ class HybridSearchEngine:
                 candidates.append((bm25, p))
 
         candidates.sort(key=lambda x: x[0], reverse=True)
-        results = [item[1] for item in candidates[:top_k]]
-
-        if tenant_chunks:
-            for tc in tenant_chunks:
-                t_tokens = self.tokenize(tc.get("text", ""))
-                common = len(set(query_tokens) & set(t_tokens))
-                if common > 0:
-                    results.insert(0, {
-                        "id": f"tenant-custom-{tc.get('chunk_id')}",
-                        "platform": "User Isolated Context",
-                        "title": "Client Custom Preference Note",
-                        "project_name": "Personalized Criteria",
-                        "developer": "Private Client Memory",
-                        "city": "User Specific",
-                        "country": "Private",
-                        "district": "Tenant Scope",
-                        "property_type": "Preference Chunk",
-                        "listing_type": "private",
-                        "price_sar": 0.0,
-                        "currency": "",
-                        "bedrooms": 0,
-                        "bathrooms": 0,
-                        "area_sqm": "",
-                        "status": "Active Context",
-                        "description": tc.get("text", ""),
-                        "amenities": [],
-                        "images": [],
-                        "official_url": "#"
-                    })
-
-        return results[:top_k]
+        return [item[1] for item in candidates[:top_k]]
 
 search_engine = HybridSearchEngine()

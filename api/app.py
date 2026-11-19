@@ -62,7 +62,6 @@ async def chat_endpoint(payload: ChatRequest, x_session_id: Optional[str] = Head
     if not passed:
         tenant.add_message("user", sanitized_message)
         tenant.add_message("assistant", guard_reply)
-        tenant.add_chunk(sanitized_message, metadata={"role": "user", "blocked": True})
         latency = (time.time() - start_time) * 1000
         return ChatResponse(
             reply=guard_reply,
@@ -74,21 +73,21 @@ async def chat_endpoint(payload: ChatRequest, x_session_id: Optional[str] = Head
             guardrail_status=guard_status
         )
 
-    tenant.add_chunk(sanitized_message, metadata={"role": "user", "blocked": False})
+    tenant.add_chunk(sanitized_message, metadata={"role": "user"})
     tenant_chunks = session_manager.get_user_chunks_only(session_id)
     
     matched_properties = search_engine.search(
         query=sanitized_message,
         top_k=3,
-        explicit_filters=payload.filters,
-        tenant_chunks=tenant_chunks
+        explicit_filters=payload.filters
     )
 
     history = tenant.get_recent_messages(limit=6)
     reply_text, model_used, was_cached = openrouter_client.generate_response(
         user_query=sanitized_message,
         properties=matched_properties,
-        history=history
+        history=history,
+        tenant_chunks=tenant_chunks
     )
 
     titles = [p.get("title", "") for p in matched_properties]
@@ -96,7 +95,6 @@ async def chat_endpoint(payload: ChatRequest, x_session_id: Optional[str] = Head
 
     tenant.add_message("user", sanitized_message)
     tenant.add_message("assistant", final_reply)
-    tenant.add_chunk(final_reply[:200], metadata={"role": "assistant"})
 
     latency = (time.time() - start_time) * 1000
 

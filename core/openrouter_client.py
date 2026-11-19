@@ -126,7 +126,7 @@ class OpenRouterClient:
         lines.append("Would you like to explore financing options, schedule a private viewing, or compare expected rental yields across these assets?")
         return "\n".join(lines)
 
-    def generate_response(self, user_query: str, properties: List[Dict[str, Any]], history: List[Dict[str, str]] = None) -> Tuple[str, str, bool]:
+    def generate_response(self, user_query: str, properties: List[Dict[str, Any]], history: List[Dict[str, str]] = None, tenant_chunks: List[Dict[str, Any]] = None) -> Tuple[str, str, bool]:
         cached_result = self.cache.get(user_query)
         if cached_result:
             reply, model_name = cached_result
@@ -138,8 +138,14 @@ class OpenRouterClient:
             return reply, "offline-grounded-engine", False
 
         context_str = self._format_context(properties)
+        system_text = f"{SYSTEM_PROMPT}\n\nVERIFIED PROPERTY CONTEXT:\n{context_str}"
+        
+        if tenant_chunks:
+            chunk_texts = [f"- {c.get('text', '')}" for c in tenant_chunks[-3:]]
+            system_text += f"\n\nTENANT PRIVATE MEMORY CHUNKS (ISOLATED TO CURRENT USER):\n" + "\n".join(chunk_texts)
+
         messages = [
-            {"role": "system", "content": f"{SYSTEM_PROMPT}\n\nVERIFIED PROPERTY CONTEXT:\n{context_str}"}
+            {"role": "system", "content": system_text}
         ]
 
         if history:
