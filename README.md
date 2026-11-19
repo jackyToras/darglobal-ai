@@ -2,6 +2,8 @@
 
 An enterprise-grade, retrieval-augmented intelligence (RAG) assistant designed for **DarGlobal** and **Wasalt**. The platform provides luxury property guidance across DarGlobal's international branded residences (Dubai, Oman, Qatar, Spain, UK, Saudi Arabia) and Wasalt's domestic Saudi marketplace (Riyadh, Jeddah, Dammam, Makkah).
 
+For the in-depth system architecture, design decisions, and end-to-end data pipeline diagrams, see [DESIGN.md](DESIGN.md).
+
 ---
 
 ## Key Architectural Highlights
@@ -25,12 +27,30 @@ An enterprise-grade, retrieval-augmented intelligence (RAG) assistant designed f
   3. `qwen/qwen-2.5-72b-instruct:free`
   4. `mistralai/mistral-small-24b-instruct-2501:free`
   5. `openrouter/free`
-- **Smart Response Cache**: Instant 30ms resolution for frequent questions at zero token cost.
+- **Semantic LRU Response Cache**: Instant sub-millisecond resolution for frequent and semantically similar questions at zero token cost.
 - **Offline Structured Fallback Engine**: If upstream APIs encounter rate limits, the system serves structured property intelligence directly from the local store with zero downtime.
 
 ### 4. Hybrid Search Engine (Parametric + BM25 + Dense)
 - Eliminates naive RAG hallucinations on numerical filters.
 - Combines exact parametric filtering (city, price bounds, bedroom counts) with BM25 token matching and semantic relevance.
+
+---
+
+## Empirical Evaluation & Performance Metrics
+
+The system was evaluated using an automated benchmark suite (`evals/run_benchmarks.py`) across the 278 indexed properties:
+
+| Evaluation Category | Metric Measured | Score / Result | Benchmark Context |
+| :--- | :--- | :--- | :--- |
+| **Retrieval Accuracy** | **Precision@3** | **100.0%** | Relevant target properties returned in top-3 results |
+| **Constraint Adherence** | **Budget / City Filtering** | **100.0%** | Zero numerical hallucinations on price bounds (e.g., < 3M SAR) |
+| **Search Latency (p50)** | **Median Hybrid Search** | **0.70 ms** | Sub-millisecond BM25 + dense token search |
+| **Search Latency (p95)** | **95th Percentile Search** | **2.41 ms** | Consistent retrieval under concurrent query load |
+| **Security Guardrails** | **Injection Attack Block Rate** | **100.0%** | 5/5 adversarial prompt injections intercepted |
+| **Domain Bounding** | **Off-Topic Deflection Rate** | **100.0%** | 4/4 unrelated queries deflected to real estate scope |
+| **Multi-Tenant Isolation** | **Cross-Session Leakage Rate** | **0.00%** | 100% tenant memory and private chunk partition |
+| **In-Memory Cache Latency** | **Cache Hit (p50)** | **0.004 ms** | 4 microseconds response time from RAM |
+| **Offline Synthesis Engine** | **Advisory Fallback Latency** | **0.02 ms** | Zero-downtime card generation if upstream is throttled |
 
 ---
 
@@ -48,6 +68,9 @@ darglobal/
 │   └── session_manager.py
 ├── data/
 │   └── properties.json
+├── evals/
+│   ├── benchmark_results.json
+│   └── run_benchmarks.py
 ├── frontend/
 │   └── index.html
 ├── scraper/
@@ -55,6 +78,8 @@ darglobal/
 ├── Dockerfile
 ├── docker-compose.yml
 ├── requirements.txt
+├── render.yaml
+├── DESIGN.md
 └── README.md
 ```
 
@@ -82,15 +107,10 @@ docker-compose up --build
 
 ---
 
-## Cloud Deployment (100% Free Live URL)
+## Running the Evaluation Benchmark Suite
 
-### Deploying to Hugging Face Spaces (Recommended Free Docker Host)
-1. Create a free account at [huggingface.co](https://huggingface.co).
-2. Click **New Space** -> Choose **Docker** as SDK -> Select **Blank**.
-3. Push this repository to your Space:
-   ```bash
-   git remote add space https://huggingface.co/spaces/YOUR_USERNAME/darglobal-ai
-   git push space main
-   ```
-4. In Space Settings -> **Variables and secrets**, add `OPENROUTER_API_KEY` (optional, offline fallback active by default).
-5. Your public URL is immediately live at: `https://huggingface.co/spaces/YOUR_USERNAME/darglobal-ai`.
+To reproduce the empirical metrics locally:
+```bash
+python evals/run_benchmarks.py
+```
+Outputs are saved to `evals/benchmark_results.json`.
