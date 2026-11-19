@@ -2,13 +2,14 @@ import json
 import math
 import os
 import re
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Set
 
 STOPWORDS = {
     "in", "at", "of", "for", "the", "a", "an", "is", "to", "and", "or", 
     "by", "on", "with", "what", "which", "where", "how", "tell", "show", 
     "me", "does", "have", "can", "you", "give", "about", "are", "from",
-    "i", "we", "my", "our", "would", "like", "want", "need", "any", "some"
+    "i", "we", "my", "our", "would", "like", "want", "need", "any", "some",
+    "this", "that", "these", "those", "all"
 }
 
 GENERIC_DESCRIPTORS = {
@@ -16,14 +17,35 @@ GENERIC_DESCRIPTORS = {
     "unit", "units", "residence", "residences", "residential", "commercial",
     "apartment", "apartments", "flat", "flats", "villa", "villas", "mansion", "mansions",
     "penthouse", "penthouses", "townhouse", "townhouses", "duplex", "studio", "land", "plot", "plots",
+    "floor", "floors", "plan", "plans", "layout", "layouts", "building", "buildings",
     "sale", "rent", "buy", "lease", "price", "cost", "budget", "investment", "invest", "roi", "yield",
     "sar", "aed", "omr", "eur", "usd", "sqm", "sqft", "meter", "meters", "bedroom", "bedrooms",
     "bed", "beds", "bhk", "room", "rooms", "bathroom", "bathrooms", "bath", "baths",
     "best", "top", "good", "luxury", "luxurious", "ultra", "modern", "new", "ready", "offplan",
+    "branded", "brand", "brands", "designer", "design", "designs",
     "view", "views", "facing", "sea", "water", "waterfront", "beach", "beachfront", "canal", "corniche",
     "available", "show", "tell", "give", "list", "recommend", "options", "details", "info", "find",
     "looking", "search", "explore", "under", "below", "above", "around", "near", "location", "place",
     "high", "low", "cheap", "expensive", "affordable", "family", "living"
+}
+
+PROPERTY_TYPES_MAP = {
+    "apartment": ["apartment", "residential"],
+    "apartments": ["apartment", "residential"],
+    "flat": ["apartment", "residential"],
+    "flats": ["apartment", "residential"],
+    "villa": ["villa", "mansion"],
+    "villas": ["villa", "mansion"],
+    "mansion": ["mansion", "villa"],
+    "mansions": ["mansion", "villa"],
+    "penthouse": ["penthouse"],
+    "penthouses": ["penthouse"],
+    "floor": ["floor"],
+    "floors": ["floor"],
+    "townhouse": ["townhouse"],
+    "townhouses": ["townhouse"],
+    "land": ["land", "plot"],
+    "plot": ["land", "plot"]
 }
 
 class HybridSearchEngine:
@@ -35,8 +57,8 @@ class HybridSearchEngine:
         self.avg_doc_len: float = 0.0
         self.k1: float = 1.5
         self.b: float = 0.75
-        self.known_locations: set = set()
-        self.known_entities: set = set()
+        self.known_locations: Set[str] = set()
+        self.known_entities: Set[str] = set()
         self.load_data()
 
     def tokenize(self, text: str) -> List[str]:
@@ -57,7 +79,7 @@ class HybridSearchEngine:
         self.known_entities = set()
 
         for p in self.properties:
-            doc_text = f"{p.get('title', '')} {p.get('project_name', '')} {p.get('brand_partner', '')} {p.get('city', '')} {p.get('country', '')} {p.get('district', '')} {p.get('property_type', '')} {p.get('description', '')} {' '.join(p.get('amenities', []))}"
+            doc_text = f"{p.get('title', '')} {p.get('project_name', '')} {p.get('brand_partner', '')} {p.get('developer', '')} {p.get('city', '')} {p.get('country', '')} {p.get('district', '')} {p.get('property_type', '')} {p.get('description', '')} {' '.join(p.get('amenities', []))}"
             tokens = self.tokenize(doc_text)
             self.corpus_tokens.append(tokens)
             total_len += len(tokens)
@@ -103,6 +125,11 @@ class HybridSearchEngine:
                 constraints["city"] = c.capitalize()
                 break
 
+        for key, targets in PROPERTY_TYPES_MAP.items():
+            if re.search(r"\b" + re.escape(key) + r"\b", lowered):
+                constraints["property_type_targets"] = targets
+                break
+
         price_matches = re.findall(r"(?:under|below|less than|max|budget)\s*([\d\.,]+)\s*(?:m|million|k)?", lowered)
         if price_matches:
             raw_val = price_matches[0].replace(",", "")
@@ -130,7 +157,7 @@ class HybridSearchEngine:
 
         return constraints
 
-    def is_query_out_of_catalog(self, query: str, query_tokens: List[str]) -> bool:
+    def is_query_out_of_catalog(self, query: str, query_tokens: List[str], parsed: Dict[str, Any]) -> bool:
         lowered = query.lower()
 
         loc_targets = re.findall(r"\b(?:in|at|near|around|from)\s+([a-zA-Z\u0600-\u06FF]+)", lowered)
@@ -143,10 +170,20 @@ class HybridSearchEngine:
                 if not has_any_supported:
                     return True
 
-        specific_tokens = [t for t in query_tokens if t not in GENERIC_DESCRIPTORS]
-        if specific_tokens:
-            has_corpus_match = any(st in self.doc_freq for st in specific_tokens)
-            if not has_corpus_match:
+        facet_words = set()
+        if parsed.get("city"):
+            facet_words.add(parsed["city"].lower())
+        if parsed.get("platform"):
+            facet_words.add(parsed["platform"].lower())
+
+        content_tokens = [
+            t for t in query_tokens 
+            if not t.isdigit() and t not in GENERIC_DESCRIPTORS and t not in facet_words
+        ]
+
+        if content_tokens:
+            has_any_presence = any(ct in self.doc_freq for ct in content_tokens)
+            if not has_any_presence:
                 return True
 
         return False
@@ -177,14 +214,23 @@ class HybridSearchEngine:
         if not query_tokens:
             return []
 
-        if self.is_query_out_of_catalog(query, query_tokens):
-            return []
-
         parsed = self.parse_query_constraints(query)
         if explicit_filters:
             parsed.update({k: v for k, v in explicit_filters.items() if v is not None})
 
-        specific_query_tokens = [t for t in query_tokens if t not in GENERIC_DESCRIPTORS]
+        if self.is_query_out_of_catalog(query, query_tokens, parsed):
+            return []
+
+        facet_words = set()
+        if parsed.get("city"):
+            facet_words.add(parsed["city"].lower())
+        if parsed.get("platform"):
+            facet_words.add(parsed["platform"].lower())
+
+        content_tokens = [
+            t for t in query_tokens 
+            if not t.isdigit() and t not in GENERIC_DESCRIPTORS and t not in facet_words
+        ]
 
         candidates = []
 
@@ -198,11 +244,25 @@ class HybridSearchEngine:
                     continue
 
             if parsed.get("max_price"):
-                if p.get("price_sar", 0.0) > (parsed["max_price"] * 1.15):
+                if p.get("price_sar", 0.0) > (parsed["max_price"] * 1.05):
                     continue
 
-            if parsed.get("bedrooms"):
-                if p.get("bedrooms") is not None and p.get("bedrooms") < parsed["bedrooms"]:
+            if parsed.get("bedrooms") is not None:
+                p_beds = p.get("bedrooms")
+                p_min = p.get("bedrooms_min")
+                p_max = p.get("bedrooms_max")
+                if p_min is not None and p_max is not None:
+                    if not (p_min <= parsed["bedrooms"] <= p_max):
+                        continue
+                elif p_beds is not None:
+                    if p_beds != parsed["bedrooms"]:
+                        continue
+
+            if parsed.get("property_type_targets"):
+                doc_ptype = p.get("property_type", "").lower()
+                doc_title = p.get("title", "").lower()
+                matched_ptype = any(target in doc_ptype or target in doc_title for target in parsed["property_type_targets"])
+                if not matched_ptype:
                     continue
 
             if parsed.get("listing_type"):
@@ -210,13 +270,14 @@ class HybridSearchEngine:
                     continue
 
             doc_tokens_set = set(self.corpus_tokens[idx])
-            if specific_query_tokens:
-                has_specific_match = any(st in doc_tokens_set for st in specific_query_tokens)
-                if not has_specific_match:
+            if content_tokens:
+                matched_count = sum(1 for ct in content_tokens if ct in doc_tokens_set)
+                coverage = matched_count / len(content_tokens)
+                if coverage < 0.5:
                     continue
 
             bm25 = self.score_bm25(query_tokens, idx)
-            threshold = 0.5 if specific_query_tokens else 1.0
+            threshold = 0.5 if content_tokens else 1.0
             if bm25 >= threshold:
                 candidates.append((bm25, p))
 

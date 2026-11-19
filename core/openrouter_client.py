@@ -34,7 +34,7 @@ Wasalt is Saudi Arabia's premier proptech marketplace for residential villas, ap
 Your mandate:
 1. Provide accurate, professional, and strictly grounded real estate guidance.
 2. Only recommend properties present in the verified context provided below.
-3. If no matching properties exist in the verified context, or if the user asks about properties/locations outside our operational regions (such as India, Mumbai, Bandra, USA, etc.), you MUST explicitly state that the property is not part of the verified DarGlobal and Wasalt catalog. Do NOT recommend unrelated properties.
+3. If no matching properties exist in the verified context, or if the user asks about properties, brands, or locations outside our verified catalog (such as Ferrari, DLF, Bandra, Tokyo, etc.), you MUST explicitly state that the requested brand, property, or location is not part of the verified DarGlobal and Wasalt catalog. Do NOT substitute or recommend unrelated properties.
 4. Format responses cleanly with bold titles, concise bullet points, and pricing figures.
 5. If answering in Arabic, maintain a polished, fluent professional tone.
 """
@@ -127,7 +127,7 @@ class OpenRouterClient:
             greeting_words = {"hi", "hello", "hey", "marhaba", "salam", "morning", "evening", "help"}
             if tokens.intersection(greeting_words) or "who are you" in lowered:
                 return "Welcome to the DarGlobal & Wasalt Real Estate Concierge. I am your AI advisor for luxury international developments (Dubai, Oman, Qatar, Spain, UK) and Saudi Arabian residential properties (Riyadh, Jeddah, Dammam). How may I assist your property search or investment today?"
-            return f"I cannot find any properties matching '{user_query}' in our verified portfolio. DarGlobal and Wasalt specialize exclusively in luxury international branded developments (Dubai, Oman, Qatar, Spain, UK) and residential/commercial real estate in Saudi Arabia (Riyadh, Jeddah, Dammam). The requested location or project is outside our operational territory. Please let me know if you would like to explore luxury residences or investment assets within our official regions."
+            return f"I cannot find any properties matching '{user_query}' in our verified portfolio. DarGlobal and Wasalt specialize exclusively in luxury international branded developments (Dubai, Oman, Qatar, Spain, UK) and residential/commercial real estate in Saudi Arabia (Riyadh, Jeddah, Dammam). The requested brand, project, or location is not part of our verified catalog. Please let me know if you would like to explore luxury residences or investment assets within our official regions."
 
         lines = ["Here are the premier verified properties matching your criteria from DarGlobal and Wasalt:\n"]
         for p in properties:

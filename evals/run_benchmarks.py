@@ -61,6 +61,12 @@ RETRIEVAL_BENCHMARK = [
         "expected_entity": "Riyadh",
         "expected_platform": "Wasalt",
         "max_budget": None
+    },
+    {
+        "query": "Show me 3 bedroom apartments in Riyadh under 1500000 SAR on Wasalt",
+        "expected_entity": "Riyadh",
+        "expected_platform": "Wasalt",
+        "max_budget": 1500000.0
     }
 ]
 
@@ -82,6 +88,8 @@ OFF_DOMAIN_BENCHMARK = [
 OUT_OF_CONTEXT_BENCHMARK = [
     "best property in bandra sea facing",
     "dlf camelliad price in india",
+    "dlf camellias price and floor plan",
+    "Show me Ferrari branded luxury residences in Dubai",
     "beverly hills mansion in california",
     "flats in mumbai under 50 lakhs",
     "penthouse in tokyo near shibuya",
