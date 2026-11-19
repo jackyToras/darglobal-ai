@@ -45,47 +45,38 @@ class SemanticLRUCache:
         self.ttl = ttl_seconds
         self.entries: Dict[str, Dict[str, Any]] = {}
 
-    def _tokenize(self, text: str) -> set:
-        cleaned = re.sub(r"[^\w\s]", " ", text.lower())
-        return {w for w in cleaned.split() if len(w) > 2}
+    def _normalize(self, text: str) -> str:
+        return " ".join(re.findall(r"[a-zA-Z0-9\u0600-\u06FF]+", text.lower()))
 
-    def _jaccard_similarity(self, set1: set, set2: set) -> float:
-        if not set1 or not set2:
-            return 0.0
-        intersection = len(set1 & set2)
-        union = len(set1 | set2)
-        return intersection / union if union > 0 else 0.0
-
-    def get(self, query: str) -> Optional[Tuple[str, str]]:
+    def get(self, query: str, has_properties: Optional[bool] = None) -> Optional[Tuple[str, str]]:
+        norm_key = self._normalize(query)
         now = time.time()
-        q_tokens = self._tokenize(query)
-        best_match = None
-        best_score = 0.0
 
-        for key, item in list(self.entries.items()):
-            if now - item["timestamp"] > self.ttl:
-                del self.entries[key]
-                continue
+        entry = self.entries.get(norm_key)
+        if entry:
+            if now - entry["timestamp"] > self.ttl:
+                del self.entries[norm_key]
+                return None
 
-            similarity = self._jaccard_similarity(q_tokens, item["tokens"])
-            if similarity >= 0.70 and similarity > best_score:
-                best_score = similarity
-                best_match = (item["reply"], item["model"])
+            if has_properties is not None:
+                is_boundary = entry.get("model") == "grounded-boundary-filter"
+                if has_properties and is_boundary:
+                    return None
+                if not has_properties and not is_boundary:
+                    return None
 
-        if best_match:
-            return best_match
+            return (entry["reply"], entry["model"])
         return None
 
     def put(self, query: str, reply: str, model: str):
+        norm_key = self._normalize(query)
         if len(self.entries) >= self.max_size:
             oldest_key = min(self.entries.keys(), key=lambda k: self.entries[k]["timestamp"])
             del self.entries[oldest_key]
 
-        norm_key = " ".join(query.lower().strip().split())
         self.entries[norm_key] = {
             "reply": reply,
             "model": model,
-            "tokens": self._tokenize(query),
             "timestamp": time.time()
         }
 
@@ -145,7 +136,8 @@ class OpenRouterClient:
         return "\n".join(lines)
 
     def generate_response(self, user_query: str, properties: List[Dict[str, Any]], history: List[Dict[str, str]] = None, tenant_chunks: List[Dict[str, Any]] = None) -> Tuple[str, str, bool]:
-        cached_result = self.cache.get(user_query)
+        has_props = bool(properties)
+        cached_result = self.cache.get(user_query, has_properties=has_props)
         if cached_result:
             reply, model_name = cached_result
             return reply, model_name, True

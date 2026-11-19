@@ -57,8 +57,10 @@ class HybridSearchEngine:
         self.avg_doc_len: float = 0.0
         self.k1: float = 1.5
         self.b: float = 0.75
-        self.known_locations: Set[str] = set()
-        self.known_entities: Set[str] = set()
+        self.catalog_cities: Dict[str, str] = {}
+        self.catalog_countries: Dict[str, str] = {}
+        self.catalog_districts: Dict[str, str] = {}
+        self.catalog_locations: Set[str] = set()
         self.load_data()
 
     def tokenize(self, text: str) -> List[str]:
@@ -75,8 +77,10 @@ class HybridSearchEngine:
         total_len = 0
         self.corpus_tokens = []
         self.doc_freq = {}
-        self.known_locations = set()
-        self.known_entities = set()
+        self.catalog_cities = {}
+        self.catalog_countries = {}
+        self.catalog_districts = {}
+        self.catalog_locations = set()
 
         for p in self.properties:
             doc_text = f"{p.get('title', '')} {p.get('project_name', '')} {p.get('brand_partner', '')} {p.get('developer', '')} {p.get('city', '')} {p.get('country', '')} {p.get('district', '')} {p.get('property_type', '')} {p.get('description', '')} {' '.join(p.get('amenities', []))}"
@@ -87,30 +91,54 @@ class HybridSearchEngine:
             for t in unique_tokens:
                 self.doc_freq[t] = self.doc_freq.get(t, 0) + 1
 
-            for field in ["city", "country", "district"]:
-                val = p.get(field)
-                if val:
-                    cleaned_val = val.lower().strip()
-                    self.known_locations.add(cleaned_val)
-                    for t in self.tokenize(cleaned_val):
-                        self.known_locations.add(t)
+            city = p.get("city")
+            if city:
+                city_clean = city.strip()
+                for segment in re.split(r"[,/]", city_clean):
+                    seg_clean = segment.strip()
+                    seg_lower = seg_clean.lower()
+                    if len(seg_lower) > 2 and seg_lower not in STOPWORDS:
+                        if seg_lower not in self.catalog_cities or len(seg_clean) < len(self.catalog_cities[seg_lower]):
+                            self.catalog_cities[seg_lower] = seg_clean
+                        self.catalog_locations.add(seg_lower)
 
-            for field in ["brand_partner", "developer", "project_name"]:
-                val = p.get(field)
-                if val and val != "None":
-                    cleaned_val = val.lower().strip()
-                    self.known_entities.add(cleaned_val)
-                    for t in self.tokenize(cleaned_val):
-                        self.known_entities.add(t)
+            country = p.get("country")
+            if country:
+                country_clean = country.strip()
+                for segment in re.split(r"[,/]", country_clean):
+                    seg_clean = segment.strip()
+                    seg_lower = seg_clean.lower()
+                    if len(seg_lower) > 2 and seg_lower not in STOPWORDS:
+                        if seg_lower not in self.catalog_countries or len(seg_clean) < len(self.catalog_countries[seg_lower]):
+                            self.catalog_countries[seg_lower] = seg_clean
+                        self.catalog_locations.add(seg_lower)
 
-        self.known_locations.update([
-            "saudi", "ksa", "uae", "emirates", "uk", "britain", "spain", "qatar", "oman", 
-            "london", "dubai", "riyadh", "jeddah", "dammam", "khobar", "makkah", "madina", 
-            "muscat", "marbella", "doha", "benahavis", "qetaifan", "sedra"
-        ])
+            district = p.get("district")
+            if district:
+                dist_clean = district.strip()
+                self.catalog_districts[dist_clean.lower()] = dist_clean
+                self.catalog_locations.add(dist_clean.lower())
+                for t in self.tokenize(dist_clean):
+                    if t not in STOPWORDS and t not in GENERIC_DESCRIPTORS:
+                        self.catalog_districts[t] = dist_clean
+                        self.catalog_locations.add(t)
+
+        common_aliases = {
+            "uae": "United Arab Emirates",
+            "ksa": "Saudi Arabia",
+            "uk": "United Kingdom",
+            "britain": "United Kingdom",
+            "saudi": "Saudi Arabia",
+            "emirates": "United Arab Emirates"
+        }
+        for alias, canon in common_aliases.items():
+            if canon.lower() in self.catalog_countries:
+                self.catalog_countries[alias] = canon
+                self.catalog_locations.add(alias)
+
         self.avg_doc_len = (total_len / len(self.properties)) if self.properties else 1.0
 
-    def parse_query_constraints(self, query: str) -> Dict[str, Any]:
+    def parse_query_constraints(self, query: str, query_tokens: List[str]) -> Dict[str, Any]:
         lowered = query.lower()
         constraints = {}
 
@@ -119,10 +147,14 @@ class HybridSearchEngine:
         elif "wasalt" in lowered:
             constraints["platform"] = "Wasalt"
 
-        cities = ["dubai", "riyadh", "jeddah", "dammam", "makkah", "madina", "muscat", "marbella", "doha", "london"]
-        for c in cities:
-            if c in lowered:
-                constraints["city"] = c.capitalize()
+        for token in query_tokens:
+            if token in self.catalog_cities:
+                constraints["city"] = self.catalog_cities[token]
+                break
+
+        for token in query_tokens:
+            if token in self.catalog_countries:
+                constraints["country"] = self.catalog_countries[token]
                 break
 
         for key, targets in PROPERTY_TYPES_MAP.items():
@@ -165,14 +197,20 @@ class HybridSearchEngine:
             target_clean = target.strip()
             if target_clean in STOPWORDS or target_clean in GENERIC_DESCRIPTORS:
                 continue
-            if target_clean not in self.known_locations:
-                has_any_supported = any(loc in query_tokens for loc in self.known_locations)
+            if target_clean not in self.catalog_locations:
+                has_any_supported = any(loc in query_tokens for loc in self.catalog_locations)
                 if not has_any_supported:
                     return True
 
         facet_words = set()
         if parsed.get("city"):
             facet_words.add(parsed["city"].lower())
+            for t in self.tokenize(parsed["city"]):
+                facet_words.add(t)
+        if parsed.get("country"):
+            facet_words.add(parsed["country"].lower())
+            for t in self.tokenize(parsed["country"]):
+                facet_words.add(t)
         if parsed.get("platform"):
             facet_words.add(parsed["platform"].lower())
 
@@ -214,7 +252,7 @@ class HybridSearchEngine:
         if not query_tokens:
             return []
 
-        parsed = self.parse_query_constraints(query)
+        parsed = self.parse_query_constraints(query, query_tokens)
         if explicit_filters:
             parsed.update({k: v for k, v in explicit_filters.items() if v is not None})
 
@@ -224,6 +262,12 @@ class HybridSearchEngine:
         facet_words = set()
         if parsed.get("city"):
             facet_words.add(parsed["city"].lower())
+            for t in self.tokenize(parsed["city"]):
+                facet_words.add(t)
+        if parsed.get("country"):
+            facet_words.add(parsed["country"].lower())
+            for t in self.tokenize(parsed["country"]):
+                facet_words.add(t)
         if parsed.get("platform"):
             facet_words.add(parsed["platform"].lower())
 
@@ -241,6 +285,10 @@ class HybridSearchEngine:
 
             if parsed.get("city"):
                 if parsed["city"].lower() not in p.get("city", "").lower():
+                    continue
+
+            if parsed.get("country"):
+                if parsed["country"].lower() not in p.get("country", "").lower():
                     continue
 
             if parsed.get("max_price"):
