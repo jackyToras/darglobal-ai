@@ -32,9 +32,9 @@ DarGlobal develops elite international branded residences in Dubai, Oman, Qatar,
 Wasalt is Saudi Arabia's premier proptech marketplace for residential villas, apartments, lands, and investments across Riyadh, Jeddah, Dammam, and Makkah.
 
 Your mandate:
-1. Provide accurate, professional, and grounded real estate guidance.
+1. Provide accurate, professional, and strictly grounded real estate guidance.
 2. Only recommend properties present in the verified context provided below.
-3. Compare investment metrics (yields, locations, branded prestige) when requested.
+3. If no matching properties exist in the verified context, or if the user asks about properties/locations outside our portfolio, you MUST explicitly state that the property is not in the verified DarGlobal and Wasalt catalog. Do NOT hallucinate or discuss unverified outside projects.
 4. Format responses cleanly with bold titles, concise bullet points, and pricing figures.
 5. If answering in Arabic, maintain a polished, fluent professional tone.
 """
@@ -97,7 +97,7 @@ class OpenRouterClient:
 
     def _format_context(self, properties: List[Dict[str, Any]]) -> str:
         if not properties:
-            return "No matching properties found in catalog."
+            return "NO MATCHING PROPERTIES FOUND IN VERIFIED PORTFOLIO."
         lines = []
         for p in properties:
             lines.append(
@@ -109,7 +109,7 @@ class OpenRouterClient:
 
     def _generate_offline_advisory(self, user_query: str, properties: List[Dict[str, Any]]) -> str:
         if not properties:
-            return "Thank you for inquiring with DarGlobal and Wasalt. We currently do not have matching listings for your specific criteria. Please try adjusting your budget, city (e.g., Dubai, Riyadh, Jeddah, Muscat), or property type."
+            return f"I cannot find any properties matching '{user_query}' in our verified portfolio. I exclusively provide information on DarGlobal's luxury branded residences (Dubai, Oman, Qatar, Spain, UK, Saudi Arabia) and Wasalt's Saudi marketplace. The requested property or location is not part of our verified catalog. Please feel free to ask about our official developments such as DG1 Living, DaVinci Pagani Tower, AIDA Oman, Tierra Viva, or residential properties across Riyadh and Jeddah."
 
         lines = ["Here are the premier verified properties matching your criteria from DarGlobal and Wasalt:\n"]
         for p in properties:
@@ -132,10 +132,10 @@ class OpenRouterClient:
             reply, model_name = cached_result
             return reply, model_name, True
 
-        if not self.api_key:
+        if not self.api_key or not properties:
             reply = self._generate_offline_advisory(user_query, properties)
-            self.cache.put(user_query, reply, "offline-grounded-engine")
-            return reply, "offline-grounded-engine", False
+            self.cache.put(user_query, reply, "offline-grounded-engine" if not properties else "offline-fallback-engine")
+            return reply, "offline-grounded-engine" if not properties else "offline-fallback-engine", False
 
         context_str = self._format_context(properties)
         system_text = f"{SYSTEM_PROMPT}\n\nVERIFIED PROPERTY CONTEXT:\n{context_str}"

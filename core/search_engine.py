@@ -4,6 +4,23 @@ import os
 import re
 from typing import List, Dict, Any, Optional
 
+STOPWORDS = {
+    "in", "at", "of", "for", "the", "a", "an", "is", "to", "and", "or", 
+    "by", "on", "with", "what", "which", "where", "how", "tell", "show", 
+    "me", "does", "have", "can", "you", "give", "about", "are", "from"
+}
+
+UNSUPPORTED_LOCATIONS = [
+    "india", "delhi", "mumbai", "bangalore", "gurgaon", "noida", "hyderabad", "chennai", "kolkata",
+    "california", "usa", "america", "canada", "australia", "germany", "france", "italy", "japan",
+    "new york", "los angeles", "miami", "florida", "texas", "chicago"
+]
+
+SUPPORTED_CITIES = [
+    "dubai", "riyadh", "jeddah", "dammam", "makkah", "madina", "muscat", "marbella", "doha", "london",
+    "benahavis", "qetaifan", "sedra", "khobar"
+]
+
 class HybridSearchEngine:
     def __init__(self, data_path: str = "data/properties.json"):
         self.data_path = data_path
@@ -13,11 +30,12 @@ class HybridSearchEngine:
         self.avg_doc_len: float = 0.0
         self.k1: float = 1.5
         self.b: float = 0.75
+        self.min_relevance_score: float = 0.85
         self.load_data()
 
     def tokenize(self, text: str) -> List[str]:
         cleaned = re.sub(r"[^\w\s]", " ", text.lower())
-        return [w for w in cleaned.split() if len(w) > 1]
+        return [w for w in cleaned.split() if len(w) > 2 and w not in STOPWORDS]
 
     def load_data(self):
         if not os.path.exists(self.data_path):
@@ -104,12 +122,21 @@ class HybridSearchEngine:
             score += idf * (numerator / (denominator + 1e-9))
         return score
 
-    def search(self, query: str, top_k: int = 4, explicit_filters: Optional[Dict[str, Any]] = None, tenant_chunks: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+    def search(self, query: str, top_k: int = 4, explicit_filters: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+        lowered = query.lower()
+        for loc in UNSUPPORTED_LOCATIONS:
+            if re.search(r"\b" + re.escape(loc) + r"\b", lowered):
+                if not any(re.search(r"\b" + re.escape(c) + r"\b", lowered) for c in SUPPORTED_CITIES):
+                    return []
+
         parsed = self.parse_query_constraints(query)
         if explicit_filters:
             parsed.update({k: v for k, v in explicit_filters.items() if v is not None})
 
         query_tokens = self.tokenize(query)
+        if not query_tokens:
+            return []
+
         candidates = []
 
         for idx, p in enumerate(self.properties):
@@ -134,11 +161,7 @@ class HybridSearchEngine:
                     continue
 
             bm25 = self.score_bm25(query_tokens, idx)
-            candidates.append((bm25, p))
-
-        if not candidates and (parsed.get("city") or parsed.get("max_price") or parsed.get("platform")):
-            for idx, p in enumerate(self.properties):
-                bm25 = self.score_bm25(query_tokens, idx)
+            if bm25 >= self.min_relevance_score:
                 candidates.append((bm25, p))
 
         candidates.sort(key=lambda x: x[0], reverse=True)
