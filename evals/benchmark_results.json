@@ -1,12 +1,12 @@
 {
-  "benchmark_timestamp": 1795082622.7754729,
+  "benchmark_timestamp": 1795083590.7056484,
   "total_properties_indexed": 278,
   "retrieval_evaluation": {
     "total_queries": 9,
     "retrieval_precision_at_3": 100.0,
     "constraint_adherence_rate": 100.0,
-    "latency_p50_ms": 0.31,
-    "latency_p95_ms": 1.77
+    "latency_p50_ms": 0.44,
+    "latency_p95_ms": 2.69
   },
   "guardrails_evaluation": {
     "injection_test_count": 5,
@@ -22,8 +22,8 @@
     "tenant_isolation_integrity": 100.0
   },
   "caching_and_latency": {
-    "cache_hit_latency_p50_ms": 0.003,
-    "cache_hit_latency_p95_ms": 0.046,
-    "offline_synthesis_latency_ms": 0.03
+    "cache_hit_latency_p50_ms": 0.002,
+    "cache_hit_latency_p95_ms": 0.008,
+    "offline_synthesis_latency_ms": 0.02
   }
 }

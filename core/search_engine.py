@@ -318,7 +318,7 @@ class HybridSearchEngine:
                     continue
 
             doc_tokens_set = set(self.corpus_tokens[idx])
-            if content_tokens:
+            if content_tokens and not (parsed.get("city") or parsed.get("country")):
                 matched_count = sum(1 for ct in content_tokens if ct in doc_tokens_set)
                 coverage = matched_count / len(content_tokens)
                 if coverage < 0.5:
