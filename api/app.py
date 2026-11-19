@@ -62,6 +62,7 @@ async def chat_endpoint(payload: ChatRequest, x_session_id: Optional[str] = Head
     if not passed:
         tenant.add_message("user", sanitized_message)
         tenant.add_message("assistant", guard_reply)
+        tenant.add_chunk(sanitized_message, metadata={"role": "user", "blocked": True})
         latency = (time.time() - start_time) * 1000
         return ChatResponse(
             reply=guard_reply,
@@ -73,7 +74,9 @@ async def chat_endpoint(payload: ChatRequest, x_session_id: Optional[str] = Head
             guardrail_status=guard_status
         )
 
+    tenant.add_chunk(sanitized_message, metadata={"role": "user", "blocked": False})
     tenant_chunks = session_manager.get_user_chunks_only(session_id)
+    
     matched_properties = search_engine.search(
         query=sanitized_message,
         top_k=3,
@@ -93,6 +96,7 @@ async def chat_endpoint(payload: ChatRequest, x_session_id: Optional[str] = Head
 
     tenant.add_message("user", sanitized_message)
     tenant.add_message("assistant", final_reply)
+    tenant.add_chunk(final_reply[:200], metadata={"role": "assistant"})
 
     latency = (time.time() - start_time) * 1000
 
@@ -105,20 +109,6 @@ async def chat_endpoint(payload: ChatRequest, x_session_id: Optional[str] = Head
         cached=was_cached,
         guardrail_status="passed"
     )
-
-@app.post("/api/tenant/chunk")
-async def add_tenant_chunk(payload: Dict[str, Any], x_session_id: Optional[str] = Header(None)):
-    session_id = payload.get("session_id") or x_session_id
-    tenant = session_manager.get_session(session_id)
-    text = payload.get("text", "").strip()
-    if not text:
-        raise HTTPException(status_code=400, detail="Text cannot be empty")
-    tenant.add_chunk(text=text, metadata=payload.get("metadata"))
-    return {
-        "status": "success",
-        "session_id": tenant.session_id,
-        "total_chunks": len(tenant.isolated_chunks)
-    }
 
 @app.get("/api/properties")
 async def list_properties(

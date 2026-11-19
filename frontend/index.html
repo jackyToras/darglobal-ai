@@ -351,91 +351,6 @@
       opacity: 0.4;
       cursor: not-allowed;
     }
-    .tenant-drawer-btn {
-      background: transparent;
-      border: 1px solid var(--border-subtle);
-      color: var(--text-muted);
-      border-radius: 8px;
-      padding: 0 12px;
-      font-size: 0.8rem;
-      cursor: pointer;
-    }
-    .tenant-drawer-btn:hover {
-      border-color: var(--gold-primary);
-      color: var(--gold-primary);
-    }
-    .modal-overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.75);
-      backdrop-filter: blur(6px);
-      z-index: 100;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-    }
-    .modal-content {
-      background: var(--bg-surface);
-      border: 1px solid var(--border-color);
-      border-radius: 14px;
-      width: 100%;
-      max-width: 480px;
-      padding: 24px;
-    }
-    .modal-title {
-      font-family: 'Cinzel', serif;
-      font-size: 1.15rem;
-      color: var(--gold-primary);
-      margin-bottom: 8px;
-    }
-    .modal-desc {
-      font-size: 0.82rem;
-      color: var(--text-muted);
-      margin-bottom: 16px;
-      line-height: 1.4;
-    }
-    .modal-textarea {
-      width: 100%;
-      height: 110px;
-      background: var(--bg-card);
-      border: 1px solid var(--border-subtle);
-      border-radius: 8px;
-      padding: 10px;
-      color: #FFFFFF;
-      font-family: inherit;
-      font-size: 0.86rem;
-      resize: none;
-      outline: none;
-      margin-bottom: 14px;
-    }
-    .modal-textarea:focus {
-      border-color: var(--gold-primary);
-    }
-    .modal-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 10px;
-    }
-    .btn-secondary {
-      background: transparent;
-      border: 1px solid var(--border-subtle);
-      color: var(--text-muted);
-      padding: 8px 14px;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 0.82rem;
-    }
-    .btn-primary {
-      background: var(--gold-primary);
-      color: #080B11;
-      border: none;
-      padding: 8px 16px;
-      border-radius: 6px;
-      font-weight: 600;
-      cursor: pointer;
-      font-size: 0.82rem;
-    }
     .typing-indicator {
       display: none;
       align-items: center;
@@ -481,9 +396,8 @@
         <span id="health-status">278 Properties Active</span>
       </div>
       <div class="badge badge-tenant">
-        Tenant: <span id="tenant-display">...</span>
+        Tenant Session: <span id="tenant-display">...</span> (Isolated)
       </div>
-      <button class="tenant-drawer-btn" onclick="openTenantModal()">+ Private Note</button>
       <button class="btn-new-session" onclick="resetSession()">New Session</button>
     </div>
   </header>
@@ -499,7 +413,7 @@
               I provide grounded real estate guidance across <strong>DarGlobal</strong>'s international luxury branded portfolio (Dubai, Oman, Qatar, Spain, UK) and <strong>Wasalt</strong>'s extensive residential marketplace across Saudi Arabia (Riyadh, Jeddah, Dammam).
             </p>
             <p style="margin-top: 6px; font-size: 0.84rem; color: var(--gold-primary);">
-              Your session is private, isolated via tenant token, and guarded by real-time safety verification.
+              Every query and interaction in this session is automatically chunked and strictly isolated to your private tenant token. Other users will never access your session memory.
             </p>
           </div>
         </div>
@@ -522,20 +436,6 @@
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
           </button>
         </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="modal-overlay" id="tenant-modal">
-    <div class="modal-content">
-      <div class="modal-title">Client Private Context Note</div>
-      <div class="modal-desc">
-        Store a private investment requirement chunk isolated exclusively to your Tenant Session. Other users will never access this memory.
-      </div>
-      <textarea id="tenant-note-input" class="modal-textarea" placeholder="Example: Target budget is 3.5M SAR cash buyer, interested exclusively in off-plan luxury with private pool..."></textarea>
-      <div class="modal-actions">
-        <button class="btn-secondary" onclick="closeTenantModal()">Cancel</button>
-        <button class="btn-primary" onclick="saveTenantNote()">Save Isolated Chunk</button>
       </div>
     </div>
   </div>
@@ -685,37 +585,6 @@
           </div>
         </div>
       `;
-    }
-
-    function openTenantModal() {
-      document.getElementById("tenant-modal").style.display = "flex";
-    }
-
-    function closeTenantModal() {
-      document.getElementById("tenant-modal").style.display = "none";
-    }
-
-    async function saveTenantNote() {
-      const val = document.getElementById("tenant-note-input").value.trim();
-      if (!val) return;
-      try {
-        await fetch("/api/tenant/chunk", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Session-ID": currentSessionId
-          },
-          body: JSON.stringify({
-            text: val,
-            session_id: currentSessionId
-          })
-        });
-        alert("Private context chunk saved exclusively to tenant memory!");
-        closeTenantModal();
-        document.getElementById("tenant-note-input").value = "";
-      } catch (e) {
-        alert("Failed to save note: " + e.message);
-      }
     }
   </script>
 </body>
