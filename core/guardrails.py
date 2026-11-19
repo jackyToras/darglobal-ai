@@ -28,6 +28,7 @@ DOMAIN_KEYWORDS = [
 class GuardrailsEngine:
     def __init__(self):
         self.injection_regex = [re.compile(p, re.IGNORECASE) for p in INJECTION_PATTERNS]
+        self.domain_regex = [re.compile(r"\b" + re.escape(kw) + r"\b", re.IGNORECASE) for kw in DOMAIN_KEYWORDS]
 
     def check_injection(self, text: str) -> bool:
         for pattern in self.injection_regex:
@@ -39,8 +40,8 @@ class GuardrailsEngine:
         lowered = text.lower().strip()
         if len(lowered) < 4:
             return True
-        for kw in DOMAIN_KEYWORDS:
-            if kw in lowered:
+        for pattern in self.domain_regex:
+            if pattern.search(lowered):
                 return True
         return False
 
