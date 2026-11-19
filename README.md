@@ -2,6 +2,8 @@
 
 An enterprise-grade, retrieval-augmented intelligence (RAG) assistant designed for **DarGlobal** and **Wasalt**. The platform provides luxury property guidance across DarGlobal's international branded residences (Dubai, Oman, Qatar, Spain, UK, Saudi Arabia) and Wasalt's domestic Saudi marketplace (Riyadh, Jeddah, Dammam, Makkah).
 
+**Live Application URL**: [https://darglobal-ai.onrender.com/](https://darglobal-ai.onrender.com/)
+
 For the in-depth system architecture, design decisions, and end-to-end data pipeline diagrams, see [DESIGN.md](DESIGN.md).
 
 ---
