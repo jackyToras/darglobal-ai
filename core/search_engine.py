@@ -7,19 +7,24 @@ from typing import List, Dict, Any, Optional
 STOPWORDS = {
     "in", "at", "of", "for", "the", "a", "an", "is", "to", "and", "or", 
     "by", "on", "with", "what", "which", "where", "how", "tell", "show", 
-    "me", "does", "have", "can", "you", "give", "about", "are", "from"
+    "me", "does", "have", "can", "you", "give", "about", "are", "from",
+    "i", "we", "my", "our", "would", "like", "want", "need", "any", "some"
 }
 
-UNSUPPORTED_LOCATIONS = [
-    "india", "delhi", "mumbai", "bangalore", "gurgaon", "noida", "hyderabad", "chennai", "kolkata",
-    "california", "usa", "america", "canada", "australia", "germany", "france", "italy", "japan",
-    "new york", "los angeles", "miami", "florida", "texas", "chicago"
-]
-
-SUPPORTED_CITIES = [
-    "dubai", "riyadh", "jeddah", "dammam", "makkah", "madina", "muscat", "marbella", "doha", "london",
-    "benahavis", "qetaifan", "sedra", "khobar"
-]
+GENERIC_DESCRIPTORS = {
+    "property", "properties", "real", "estate", "home", "homes", "house", "houses",
+    "unit", "units", "residence", "residences", "residential", "commercial",
+    "apartment", "apartments", "flat", "flats", "villa", "villas", "mansion", "mansions",
+    "penthouse", "penthouses", "townhouse", "townhouses", "duplex", "studio", "land", "plot", "plots",
+    "sale", "rent", "buy", "lease", "price", "cost", "budget", "investment", "invest", "roi", "yield",
+    "sar", "aed", "omr", "eur", "usd", "sqm", "sqft", "meter", "meters", "bedroom", "bedrooms",
+    "bed", "beds", "bhk", "room", "rooms", "bathroom", "bathrooms", "bath", "baths",
+    "best", "top", "good", "luxury", "luxurious", "ultra", "modern", "new", "ready", "offplan",
+    "view", "views", "facing", "sea", "water", "waterfront", "beach", "beachfront", "canal", "corniche",
+    "available", "show", "tell", "give", "list", "recommend", "options", "details", "info", "find",
+    "looking", "search", "explore", "under", "below", "above", "around", "near", "location", "place",
+    "high", "low", "cheap", "expensive", "affordable", "family", "living"
+}
 
 class HybridSearchEngine:
     def __init__(self, data_path: str = "data/properties.json"):
@@ -30,7 +35,8 @@ class HybridSearchEngine:
         self.avg_doc_len: float = 0.0
         self.k1: float = 1.5
         self.b: float = 0.75
-        self.min_relevance_score: float = 0.85
+        self.known_locations: set = set()
+        self.known_entities: set = set()
         self.load_data()
 
     def tokenize(self, text: str) -> List[str]:
@@ -47,6 +53,8 @@ class HybridSearchEngine:
         total_len = 0
         self.corpus_tokens = []
         self.doc_freq = {}
+        self.known_locations = set()
+        self.known_entities = set()
 
         for p in self.properties:
             doc_text = f"{p.get('title', '')} {p.get('project_name', '')} {p.get('brand_partner', '')} {p.get('city', '')} {p.get('country', '')} {p.get('district', '')} {p.get('property_type', '')} {p.get('description', '')} {' '.join(p.get('amenities', []))}"
@@ -57,6 +65,27 @@ class HybridSearchEngine:
             for t in unique_tokens:
                 self.doc_freq[t] = self.doc_freq.get(t, 0) + 1
 
+            for field in ["city", "country", "district"]:
+                val = p.get(field)
+                if val:
+                    cleaned_val = val.lower().strip()
+                    self.known_locations.add(cleaned_val)
+                    for t in self.tokenize(cleaned_val):
+                        self.known_locations.add(t)
+
+            for field in ["brand_partner", "developer", "project_name"]:
+                val = p.get(field)
+                if val and val != "None":
+                    cleaned_val = val.lower().strip()
+                    self.known_entities.add(cleaned_val)
+                    for t in self.tokenize(cleaned_val):
+                        self.known_entities.add(t)
+
+        self.known_locations.update([
+            "saudi", "ksa", "uae", "emirates", "uk", "britain", "spain", "qatar", "oman", 
+            "london", "dubai", "riyadh", "jeddah", "dammam", "khobar", "makkah", "madina", 
+            "muscat", "marbella", "doha", "benahavis", "qetaifan", "sedra"
+        ])
         self.avg_doc_len = (total_len / len(self.properties)) if self.properties else 1.0
 
     def parse_query_constraints(self, query: str) -> Dict[str, Any]:
@@ -101,6 +130,27 @@ class HybridSearchEngine:
 
         return constraints
 
+    def is_query_out_of_catalog(self, query: str, query_tokens: List[str]) -> bool:
+        lowered = query.lower()
+
+        loc_targets = re.findall(r"\b(?:in|at|near|around|from)\s+([a-zA-Z\u0600-\u06FF]+)", lowered)
+        for target in loc_targets:
+            target_clean = target.strip()
+            if target_clean in STOPWORDS or target_clean in GENERIC_DESCRIPTORS:
+                continue
+            if target_clean not in self.known_locations:
+                has_any_supported = any(loc in query_tokens for loc in self.known_locations)
+                if not has_any_supported:
+                    return True
+
+        specific_tokens = [t for t in query_tokens if t not in GENERIC_DESCRIPTORS]
+        if specific_tokens:
+            has_corpus_match = any(st in self.doc_freq for st in specific_tokens)
+            if not has_corpus_match:
+                return True
+
+        return False
+
     def score_bm25(self, query_tokens: List[str], doc_idx: int) -> float:
         score = 0.0
         doc_tokens = self.corpus_tokens[doc_idx]
@@ -123,19 +173,18 @@ class HybridSearchEngine:
         return score
 
     def search(self, query: str, top_k: int = 4, explicit_filters: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
-        lowered = query.lower()
-        for loc in UNSUPPORTED_LOCATIONS:
-            if re.search(r"\b" + re.escape(loc) + r"\b", lowered):
-                if not any(re.search(r"\b" + re.escape(c) + r"\b", lowered) for c in SUPPORTED_CITIES):
-                    return []
+        query_tokens = self.tokenize(query)
+        if not query_tokens:
+            return []
+
+        if self.is_query_out_of_catalog(query, query_tokens):
+            return []
 
         parsed = self.parse_query_constraints(query)
         if explicit_filters:
             parsed.update({k: v for k, v in explicit_filters.items() if v is not None})
 
-        query_tokens = self.tokenize(query)
-        if not query_tokens:
-            return []
+        specific_query_tokens = [t for t in query_tokens if t not in GENERIC_DESCRIPTORS]
 
         candidates = []
 
@@ -160,8 +209,15 @@ class HybridSearchEngine:
                 if p.get("listing_type", "").lower() != parsed["listing_type"].lower():
                     continue
 
+            doc_tokens_set = set(self.corpus_tokens[idx])
+            if specific_query_tokens:
+                has_specific_match = any(st in doc_tokens_set for st in specific_query_tokens)
+                if not has_specific_match:
+                    continue
+
             bm25 = self.score_bm25(query_tokens, idx)
-            if bm25 >= self.min_relevance_score:
+            threshold = 0.5 if specific_query_tokens else 1.0
+            if bm25 >= threshold:
                 candidates.append((bm25, p))
 
         candidates.sort(key=lambda x: x[0], reverse=True)

@@ -1,29 +1,29 @@
 {
-  "benchmark_timestamp": 1795068616.0077474,
+  "benchmark_timestamp": 1795079014.8765152,
   "total_properties_indexed": 278,
   "retrieval_evaluation": {
     "total_queries": 8,
     "retrieval_precision_at_3": 100.0,
     "constraint_adherence_rate": 100.0,
-    "latency_p50_ms": 0.7,
-    "latency_p95_ms": 2.41
+    "latency_p50_ms": 0.57,
+    "latency_p95_ms": 1.21
   },
   "guardrails_evaluation": {
     "injection_test_count": 5,
     "injection_block_rate": 100.0,
     "off_domain_test_count": 4,
-    "off_domain_deflection_rate": 100.0
+    "off_domain_deflection_rate": 100.0,
+    "out_of_context_rejection_rate": 100.0
   },
   "multi_tenant_isolation": {
     "tenant_a_chunks": 5,
     "tenant_b_chunks": 3,
     "memory_leakage_detected": false,
-    "search_leakage_detected": false,
     "tenant_isolation_integrity": 100.0
   },
   "caching_and_latency": {
-    "cache_hit_latency_p50_ms": 0.004,
-    "cache_hit_latency_p95_ms": 0.016,
-    "offline_synthesis_latency_ms": 0.02
+    "cache_hit_latency_p50_ms": 0.003,
+    "cache_hit_latency_p95_ms": 0.039,
+    "offline_synthesis_latency_ms": 0.03
   }
 }

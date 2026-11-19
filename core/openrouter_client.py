@@ -20,11 +20,11 @@ def load_env_file(filepath: str = ".env"):
 load_env_file()
 
 FREE_MODELS = [
-    "google/gemini-2.0-flash-exp:free",
-    "meta-llama/llama-3.3-70b-instruct:free",
-    "qwen/qwen-2.5-72b-instruct:free",
-    "mistralai/mistral-small-24b-instruct-2501:free",
-    "openrouter/free"
+    "openrouter/free",
+    "nvidia/nemotron-3.5-lightning:free",
+    "google/gemma-4-31b-it:free",
+    "google/gemma-4-26b-a4b-it:free",
+    "baidu/ernie-5.5-flash-preview:free"
 ]
 
 SYSTEM_PROMPT = """You are the Senior Real Estate AI Advisor representing DarGlobal and Wasalt.
@@ -34,7 +34,7 @@ Wasalt is Saudi Arabia's premier proptech marketplace for residential villas, ap
 Your mandate:
 1. Provide accurate, professional, and strictly grounded real estate guidance.
 2. Only recommend properties present in the verified context provided below.
-3. If no matching properties exist in the verified context, or if the user asks about properties/locations outside our portfolio, you MUST explicitly state that the property is not in the verified DarGlobal and Wasalt catalog. Do NOT hallucinate or discuss unverified outside projects.
+3. If no matching properties exist in the verified context, or if the user asks about properties/locations outside our operational regions (such as India, Mumbai, Bandra, USA, etc.), you MUST explicitly state that the property is not part of the verified DarGlobal and Wasalt catalog. Do NOT recommend unrelated properties.
 4. Format responses cleanly with bold titles, concise bullet points, and pricing figures.
 5. If answering in Arabic, maintain a polished, fluent professional tone.
 """
@@ -94,6 +94,19 @@ class OpenRouterClient:
         self.api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
         self.base_url = "https://openrouter.ai/api/v1/chat/completions"
         self.cache = SemanticLRUCache(max_size=500, ttl_seconds=21600)
+        self.models = self._fetch_active_models()
+
+    def _fetch_active_models(self) -> List[str]:
+        try:
+            req = urllib.request.Request("https://openrouter.ai/api/v1/models")
+            with urllib.request.urlopen(req, timeout=5) as r:
+                data = json.loads(r.read().decode("utf-8"))
+                active_free = [m["id"] for m in data.get("data", []) if ":free" in m.get("id", "")]
+                if active_free:
+                    return ["openrouter/free"] + active_free[:4]
+        except:
+            pass
+        return FREE_MODELS
 
     def _format_context(self, properties: List[Dict[str, Any]]) -> str:
         if not properties:
@@ -109,7 +122,12 @@ class OpenRouterClient:
 
     def _generate_offline_advisory(self, user_query: str, properties: List[Dict[str, Any]]) -> str:
         if not properties:
-            return f"I cannot find any properties matching '{user_query}' in our verified portfolio. I exclusively provide information on DarGlobal's luxury branded residences (Dubai, Oman, Qatar, Spain, UK, Saudi Arabia) and Wasalt's Saudi marketplace. The requested property or location is not part of our verified catalog. Please feel free to ask about our official developments such as DG1 Living, DaVinci Pagani Tower, AIDA Oman, Tierra Viva, or residential properties across Riyadh and Jeddah."
+            lowered = user_query.lower()
+            tokens = set(re.findall(r"[a-zA-Z\u0600-\u06FF]+", lowered))
+            greeting_words = {"hi", "hello", "hey", "marhaba", "salam", "morning", "evening", "help"}
+            if tokens.intersection(greeting_words) or "who are you" in lowered:
+                return "Welcome to the DarGlobal & Wasalt Real Estate Concierge. I am your AI advisor for luxury international developments (Dubai, Oman, Qatar, Spain, UK) and Saudi Arabian residential properties (Riyadh, Jeddah, Dammam). How may I assist your property search or investment today?"
+            return f"I cannot find any properties matching '{user_query}' in our verified portfolio. DarGlobal and Wasalt specialize exclusively in luxury international branded developments (Dubai, Oman, Qatar, Spain, UK) and residential/commercial real estate in Saudi Arabia (Riyadh, Jeddah, Dammam). The requested location or project is outside our operational territory. Please let me know if you would like to explore luxury residences or investment assets within our official regions."
 
         lines = ["Here are the premier verified properties matching your criteria from DarGlobal and Wasalt:\n"]
         for p in properties:
@@ -132,10 +150,15 @@ class OpenRouterClient:
             reply, model_name = cached_result
             return reply, model_name, True
 
-        if not self.api_key or not properties:
+        if not properties:
+            reply = self._generate_offline_advisory(user_query, [])
+            self.cache.put(user_query, reply, "grounded-boundary-filter")
+            return reply, "grounded-boundary-filter", False
+
+        if not self.api_key:
             reply = self._generate_offline_advisory(user_query, properties)
-            self.cache.put(user_query, reply, "offline-grounded-engine" if not properties else "offline-fallback-engine")
-            return reply, "offline-grounded-engine" if not properties else "offline-fallback-engine", False
+            self.cache.put(user_query, reply, "offline-grounded-engine")
+            return reply, "offline-grounded-engine", False
 
         context_str = self._format_context(properties)
         system_text = f"{SYSTEM_PROMPT}\n\nVERIFIED PROPERTY CONTEXT:\n{context_str}"
@@ -154,12 +177,14 @@ class OpenRouterClient:
 
         messages.append({"role": "user", "content": user_query})
 
-        for model in FREE_MODELS:
+        models_to_try = self.models or FREE_MODELS
+
+        for model in models_to_try:
             payload = {
                 "model": model,
-                "models": FREE_MODELS,
+                "models": models_to_try,
                 "messages": messages,
-                "temperature": 0.4,
+                "temperature": 0.3,
                 "max_tokens": 800
             }
 
