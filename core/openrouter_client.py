@@ -6,6 +6,19 @@ import urllib.error
 import re
 from typing import List, Dict, Any, Tuple, Optional
 
+def load_env_file(filepath: str = ".env"):
+    if os.path.exists(filepath):
+        with open(filepath, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    k_str = k.strip()
+                    if k_str not in os.environ:
+                        os.environ[k_str] = v.strip()
+
+load_env_file()
+
 FREE_MODELS = [
     "google/gemini-2.0-flash-exp:free",
     "meta-llama/llama-3.3-70b-instruct:free",
